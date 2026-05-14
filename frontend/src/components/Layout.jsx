@@ -49,6 +49,39 @@ const navSections = [
       { path: '/ai-literature', label: 'AI Literature', icon: '🤖', badge: 'AI' },
     ],
   },
+  {
+    title: 'Advanced AI',
+    items: [
+      { path: '/ai-validate-sequence', label: 'Sequence Validator', icon: '✅', badge: 'NEW' },
+      { path: '/ai-rank-candidates', label: 'Candidate Ranker', icon: '🏆', badge: 'NEW' },
+      { path: '/ai-predict-solubility', label: 'Solubility Predict', icon: '💧', badge: 'NEW' },
+      { path: '/ai-dock-protein', label: 'Docking Integrator', icon: '🧲', badge: 'NEW' },
+      { path: '/ai-predict-off-targets', label: 'Off-Target Predict', icon: '🎯', badge: 'NEW' },
+      { path: '/ai-recommend-formulation', label: 'Formulation Recom', icon: '🧴', badge: 'NEW' },
+      { path: '/ai-patent-landscape', label: 'Patent Landscape', icon: '📜', badge: 'NEW' },
+      { path: '/ai-virtual-hts', label: 'Virtual HTS Sim', icon: '🧪', badge: 'NEW' },
+    ],
+  },
+  {
+    title: 'New Capabilities',
+    items: [
+      { path: '/ai-sar-analysis', label: 'SAR Analyzer', icon: '🔬', badge: 'NEW' },
+      { path: '/ai-clinical-trial-design', label: 'Trial Designer', icon: '🏥', badge: 'NEW' },
+      { path: '/ai-competitive-intelligence', label: 'Competitive Intel', icon: '🕵️', badge: 'NEW' },
+      { path: '/ai-regulatory-pathway', label: 'Regulatory Advisor', icon: '📋', badge: 'NEW' },
+      { path: '/ai-history', label: 'AI History', icon: '📜', badge: 'NEW' },
+    ],
+  },
+  {
+    title: 'Backlog (Pass 5)',
+    items: [
+      { path: '/ai-virtual-screening', label: 'Virtual Screening', icon: '🧬', badge: 'NEW' },
+      { path: '/ai-pubchem-lookup', label: 'PubChem Lookup', icon: '🔍', badge: 'NEW' },
+      { path: '/ai-predictive-trial-success', label: 'Trial Success', icon: '📊', badge: 'NEW' },
+      { path: '/ai-lab-automation-plan', label: 'Lab Automation', icon: '🤖', badge: 'NEW' },
+      { path: '/ai-multi-objective-optimize', label: 'Multi-Obj Optimize', icon: '🎯', badge: 'NEW' },
+    ],
+  },
 ];
 
 export default function Layout({ children, onLogout }) {

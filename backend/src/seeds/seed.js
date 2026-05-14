@@ -35,6 +35,13 @@ async function seed() {
       DROP TABLE IF EXISTS users CASCADE;
     `);
 
+    // Drop extra tables that may conflict
+    await client.query(`
+      DROP TABLE IF EXISTS ai_results CASCADE;
+      DROP TABLE IF EXISTS candidate_rankings CASCADE;
+      DROP TABLE IF EXISTS admet CASCADE;
+    `);
+
     // Create tables
     await client.query(`
       CREATE TABLE users (
@@ -54,6 +61,8 @@ async function seed() {
         target VARCHAR(255),
         properties TEXT,
         status VARCHAR(50) DEFAULT 'designed',
+        organism VARCHAR(255),
+        created_by INTEGER,
         ai_output TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -102,6 +111,9 @@ async function seed() {
         affinity_score VARCHAR(100),
         method VARCHAR(100),
         conditions TEXT,
+        ligand_smiles TEXT,
+        protein_id INTEGER,
+        created_by INTEGER,
         ai_output TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -193,6 +205,8 @@ async function seed() {
         interaction_type VARCHAR(100),
         severity VARCHAR(50) DEFAULT 'unknown',
         mechanism TEXT,
+        mechanism_a TEXT,
+        mechanism_b TEXT,
         ai_output TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -234,6 +248,19 @@ async function seed() {
         response TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
+
+      CREATE TABLE ai_results (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        feature VARCHAR(100) NOT NULL,
+        input_data JSONB,
+        parsed_result JSONB,
+        raw_response TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE INDEX idx_ai_results_user_feature ON ai_results (user_id, feature);
+      CREATE INDEX idx_ai_results_created ON ai_results (created_at DESC);
     `);
 
     // Seed Users

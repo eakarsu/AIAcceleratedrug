@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Layout from './components/Layout';
 import CrudPage from './pages/CrudPage';
 import AiFeaturePage from './pages/AiFeaturePage';
+import AiHistoryPage from './pages/AiHistoryPage';
 
 const featureConfigs = {
   proteins: {
@@ -307,6 +308,195 @@ const aiFeatureConfigs = {
       { key: 'focus', label: 'Focus Area (optional)', placeholder: 'e.g., Clinical outcomes, Resistance mechanisms' },
     ],
   },
+  // ============= NEW Custom Non-CRUD Features =============
+  'ai-validate-sequence': {
+    title: 'Sequence Validator',
+    subtitle: 'Validate protein/DNA/RNA sequences for chemistry rules',
+    icon: '✅',
+    apiCall: 'aiValidateSequence',
+    fields: [
+      { key: 'type', label: 'Sequence Type', type: 'select', options: ['protein', 'DNA', 'RNA'] },
+      { key: 'sequence', label: 'Sequence', type: 'textarea', placeholder: 'e.g., MKVLWAALLVTFLAGCQA...', rows: 6 },
+    ],
+  },
+  'ai-rank-candidates': {
+    title: 'Candidate Ranker',
+    subtitle: 'Multi-objective ranking of drug candidates (potency + safety + cost)',
+    icon: '🏆',
+    apiCall: 'aiRankCandidates',
+    fields: [
+      { key: 'candidate_ids', label: 'Candidate IDs (comma-separated)', type: 'csv-array', placeholder: 'e.g., 1,2,3' },
+    ],
+  },
+  'ai-predict-solubility': {
+    title: 'Solubility Predictor',
+    subtitle: 'Predict aqueous solubility from SMILES; identify precipitation risks',
+    icon: '💧',
+    apiCall: 'aiPredictSolubility',
+    fields: [
+      { key: 'compound_name', label: 'Compound Name', placeholder: 'e.g., Compound NX-7821' },
+      { key: 'smiles', label: 'SMILES', type: 'textarea', placeholder: 'e.g., CC(=O)Nc1ccc(O)cc1' },
+    ],
+  },
+  'ai-dock-protein': {
+    title: 'Docking Integrator',
+    subtitle: 'In-silico docking simulation with quantitative binding scores',
+    icon: '🧲',
+    apiCall: 'aiDockProtein',
+    fields: [
+      { key: 'protein_name', label: 'Protein Name', placeholder: 'e.g., EGFR kinase' },
+      { key: 'pdb_id', label: 'PDB ID (optional)', placeholder: 'e.g., 1M17' },
+      { key: 'ligand_smiles', label: 'Ligand SMILES', type: 'textarea', placeholder: 'e.g., COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OC' },
+    ],
+  },
+  'ai-predict-off-targets': {
+    title: 'Off-Target Predictor',
+    subtitle: 'Screen candidates for unintended protein interactions (ChEMBL-style)',
+    icon: '🎯',
+    apiCall: 'aiPredictOffTargets',
+    fields: [
+      { key: 'compound_name', label: 'Compound Name', placeholder: 'e.g., Compound NX-7821' },
+      { key: 'smiles', label: 'SMILES (optional)', type: 'textarea' },
+      { key: 'intended_target', label: 'Intended Target', placeholder: 'e.g., EGFR' },
+    ],
+  },
+  'ai-recommend-formulation': {
+    title: 'Formulation Recommender',
+    subtitle: 'Suggest excipients, pH, buffer based on chemical stability',
+    icon: '🧴',
+    apiCall: 'aiRecommendFormulation',
+    fields: [
+      { key: 'compound_name', label: 'Compound Name', placeholder: 'e.g., Compound NX-7821' },
+      { key: 'smiles', label: 'SMILES (optional)', type: 'textarea' },
+      { key: 'route', label: 'Route', placeholder: 'e.g., Oral, IV, SC' },
+      { key: 'target_dose', label: 'Target Dose', placeholder: 'e.g., 50 mg/day' },
+      { key: 'stability_concerns', label: 'Stability Concerns (optional)', type: 'textarea' },
+    ],
+  },
+  'ai-patent-landscape': {
+    title: 'Patent Landscape',
+    subtitle: 'Auto-query patent IP landscape and freedom-to-operate analysis',
+    icon: '📜',
+    apiCall: 'aiPatentLandscape',
+    fields: [
+      { key: 'topic', label: 'Topic', placeholder: 'e.g., KRAS G12C covalent inhibitors' },
+      { key: 'target', label: 'Target (optional)', placeholder: 'e.g., KRAS G12C' },
+      { key: 'jurisdiction', label: 'Jurisdiction', placeholder: 'e.g., US, EU, JP, CN' },
+    ],
+  },
+  'ai-virtual-hts': {
+    title: 'Virtual HTS Simulator',
+    subtitle: 'In-silico high-throughput screening across compound libraries',
+    icon: '🧪',
+    apiCall: 'aiVirtualHts',
+    fields: [
+      { key: 'target', label: 'Target', placeholder: 'e.g., KRAS G12C' },
+      { key: 'library_size', label: 'Library Size', type: 'number', placeholder: 'e.g., 100000' },
+      { key: 'criteria', label: 'Selection Criteria', type: 'textarea', placeholder: 'e.g., Drug-like, novel, predicted IC50 < 1µM' },
+    ],
+  },
+  'ai-sar-analysis': {
+    title: 'SAR Analyzer',
+    subtitle: 'Structure-Activity Relationship analysis — identify pharmacophore and optimization vectors',
+    icon: '🔬',
+    apiCall: 'aiSarAnalysis',
+    fields: [
+      { key: 'target', label: 'Target', placeholder: 'e.g., EGFR kinase' },
+      { key: 'property', label: 'Property to Optimize', placeholder: 'e.g., potency (IC50), selectivity, solubility' },
+      { key: 'compound_series', label: 'Compound Series (JSON array)', type: 'json-array', placeholder: '[{"name": "Cpd-1", "smiles": "...", "ic50_nM": 50}, ...]', rows: 6 },
+    ],
+  },
+  'ai-clinical-trial-design': {
+    title: 'Clinical Trial Designer',
+    subtitle: 'AI-generated clinical trial protocols with endpoints, sample size, and statistical plan',
+    icon: '🏥',
+    apiCall: 'aiClinicalTrialDesign',
+    fields: [
+      { key: 'drug_candidate', label: 'Drug Candidate', placeholder: 'e.g., DRC-001 Nexatinib' },
+      { key: 'indication', label: 'Indication', placeholder: 'e.g., EGFR-mutant NSCLC' },
+      { key: 'phase', label: 'Phase', type: 'select', options: ['Phase I', 'Phase I/II', 'Phase II', 'Phase III'] },
+      { key: 'safety_data', label: 'Existing Safety Data (optional)', type: 'textarea', placeholder: 'e.g., No DLTs at 100mg, mild nausea noted' },
+    ],
+  },
+  'ai-competitive-intelligence': {
+    title: 'Competitive Intelligence',
+    subtitle: 'AI-generated competitive landscape: approved drugs, clinical competitors, market analysis',
+    icon: '🕵️',
+    apiCall: 'aiCompetitiveIntelligence',
+    fields: [
+      { key: 'target_or_disease', label: 'Target or Disease Area', placeholder: 'e.g., KRAS G12C NSCLC, GLP-1R obesity' },
+      { key: 'focus', label: 'Focus Area (optional)', placeholder: 'e.g., Clinical competitors, Patent landscape, Market sizing' },
+    ],
+  },
+  'ai-regulatory-pathway': {
+    title: 'Regulatory Pathway Advisor',
+    subtitle: 'FDA/EMA regulatory roadmap with timelines, costs, and designation opportunities',
+    icon: '📋',
+    apiCall: 'aiRegulatoryPathway',
+    fields: [
+      { key: 'drug_type', label: 'Drug Type', type: 'select', options: ['Small Molecule', 'Monoclonal Antibody', 'Bispecific Antibody', 'ADC', 'Cell Therapy', 'Gene Therapy', 'Peptide', 'Oligonucleotide', 'mRNA'] },
+      { key: 'indication', label: 'Indication', placeholder: 'e.g., Relapsed/Refractory AML' },
+      { key: 'phase', label: 'Current Phase', type: 'select', options: ['Discovery', 'Preclinical', 'Phase I', 'Phase II', 'Phase III'] },
+      { key: 'jurisdiction', label: 'Regulatory Jurisdiction', type: 'select', options: ['FDA (US)', 'EMA (EU)', 'PMDA (Japan)', 'NMPA (China)', 'Global'] },
+    ],
+  },
+  // Apply pass 5 — backlog
+  'ai-virtual-screening': {
+    title: 'Virtual Screening Pipeline',
+    subtitle: 'Rank a SMILES library against a target and return top hits',
+    icon: '🧬',
+    apiCall: 'aiVirtualScreening',
+    fields: [
+      { key: 'target', label: 'Target', placeholder: 'e.g., EGFR kinase' },
+      { key: 'max_hits', label: 'Max Hits', type: 'number', placeholder: '50' },
+      { key: 'compounds', label: 'Compounds (JSON array)', type: 'json-array', placeholder: '[{"name": "Cpd-1", "smiles": "..."}, ...]', rows: 6 },
+    ],
+  },
+  'ai-pubchem-lookup': {
+    title: 'PubChem Lookup',
+    subtitle: 'Look up compound properties from PubChem (requires PUBCHEM_ENABLED env var)',
+    icon: '🔍',
+    apiCall: 'aiPubchemLookup',
+    fields: [
+      { key: 'query', label: 'Query', placeholder: 'aspirin or CC(=O)Oc1ccccc1C(=O)O' },
+      { key: 'search_type', label: 'Search Type', type: 'select', options: ['name', 'smiles'] },
+    ],
+  },
+  'ai-predictive-trial-success': {
+    title: 'Predictive Trial Success',
+    subtitle: 'Estimate clinical trial success probability (heuristic LLM scoring)',
+    icon: '📊',
+    apiCall: 'aiPredictiveTrialSuccess',
+    fields: [
+      { key: 'drug_candidate', label: 'Drug Candidate', placeholder: 'e.g., DRC-001' },
+      { key: 'indication', label: 'Indication', placeholder: 'e.g., NSCLC' },
+      { key: 'phase', label: 'Phase', type: 'select', options: ['Phase 1', 'Phase 2', 'Phase 3'] },
+      { key: 'biomarkers', label: 'Biomarkers (JSON array)', type: 'json-array', placeholder: '["EGFR", "PD-L1"]' },
+    ],
+  },
+  'ai-lab-automation-plan': {
+    title: 'Lab Automation Planner',
+    subtitle: 'Plan a lab automation protocol (requires LAB_AUTOMATION_URL env var)',
+    icon: '🤖',
+    apiCall: 'aiLabAutomationPlan',
+    fields: [
+      { key: 'experiment', label: 'Experiment', placeholder: 'e.g., dose-response IC50 assay' },
+      { key: 'plate_format', label: 'Plate Format', type: 'select', options: ['96-well', '384-well', '1536-well'] },
+      { key: 'replicates', label: 'Replicates', type: 'number', placeholder: '3' },
+      { key: 'target', label: 'Target (optional)', placeholder: 'e.g., EGFR' },
+    ],
+  },
+  'ai-multi-objective-optimize': {
+    title: 'Multi-Objective Optimizer',
+    subtitle: 'AI-driven Pareto-front selection over multiple objectives',
+    icon: '🎯',
+    apiCall: 'aiMultiObjectiveOptimize',
+    fields: [
+      { key: 'candidates', label: 'Candidates (JSON array)', type: 'json-array', placeholder: '[{"name":"Cpd-1","ic50_nM":10,"logP":3.2}, ...]', rows: 6 },
+      { key: 'objectives', label: 'Objectives (JSON array)', type: 'json-array', placeholder: '["potency","solubility","selectivity"]' },
+      { key: 'weights', label: 'Weights (JSON object, optional)', type: 'json-array', placeholder: '{"potency":0.5,"solubility":0.3,"selectivity":0.2}' },
+    ],
+  },
 };
 
 function App() {
@@ -339,6 +529,7 @@ function App() {
           {Object.entries(aiFeatureConfigs).map(([key, config]) => (
             <Route key={key} path={`/${key}`} element={<AiFeaturePage config={config} />} />
           ))}
+          <Route path="/ai-history" element={<AiHistoryPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>

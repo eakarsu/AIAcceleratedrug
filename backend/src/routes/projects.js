@@ -1,12 +1,38 @@
 const express = require('express');
 const router = express.Router();
+const { body, validationResult } = require('express-validator');
 const { authenticateToken } = require('../middleware/auth');
+const { paginate, paginationMeta } = require('../middleware/paginate');
 
-router.get('/', authenticateToken, async (req, res) => {
+function handleValidation(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return true; }
+  return false;
+}
+
+const projectValidation = [
+  body('name').trim().notEmpty().withMessage('name is required').isLength({ max: 255 }),
+  body('lead_scientist').optional().isString().isLength({ max: 255 }),
+  body('status').optional().isIn(['planning', 'active', 'on_hold', 'completed']),
+  body('budget').optional().isFloat({ min: 0 }),
+  body('start_date').optional().isISO8601(),
+  body('end_date').optional().isISO8601(),
+];
+
+router.get('/', authenticateToken, paginate, async (req, res) => {
   try {
     const pool = req.app.get('db');
-    const result = await pool.query('SELECT * FROM research_projects ORDER BY created_at DESC');
-    res.json(result.rows);
+    const { page, limit, offset } = req.pagination;
+    const search = req.query.search || '';
+    const whereClause = search ? `WHERE name ILIKE $3 OR lead_scientist ILIKE $3` : '';
+    const params = search ? [limit, offset, `%${search}%`] : [limit, offset];
+
+    const [rows, count] = await Promise.all([
+      pool.query(`SELECT * FROM research_projects ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, params),
+      pool.query(`SELECT COUNT(*) FROM research_projects ${whereClause}`, search ? [`%${search}%`] : []),
+    ]);
+
+    res.json({ data: rows.rows, pagination: paginationMeta(count.rows[0].count, page, limit) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -19,25 +45,27 @@ router.get('/:id', authenticateToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, projectValidation, async (req, res) => {
+  if (handleValidation(req, res)) return;
   try {
     const pool = req.app.get('db');
     const { name, lead_scientist, objective, status, budget, start_date, end_date, description } = req.body;
     const result = await pool.query(
       'INSERT INTO research_projects (name, lead_scientist, objective, status, budget, start_date, end_date, description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-      [name, lead_scientist, objective, status || 'active', budget, start_date, end_date, description]
+      [name, lead_scientist, objective, status || 'active', budget, start_date || null, end_date || null, description]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, projectValidation, async (req, res) => {
+  if (handleValidation(req, res)) return;
   try {
     const pool = req.app.get('db');
     const { name, lead_scientist, objective, status, budget, start_date, end_date, description } = req.body;
     const result = await pool.query(
       'UPDATE research_projects SET name=$1, lead_scientist=$2, objective=$3, status=$4, budget=$5, start_date=$6, end_date=$7, description=$8, updated_at=NOW() WHERE id=$9 RETURNING *',
-      [name, lead_scientist, objective, status, budget, start_date, end_date, description, req.params.id]
+      [name, lead_scientist, objective, status, budget, start_date || null, end_date || null, description, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     res.json(result.rows[0]);

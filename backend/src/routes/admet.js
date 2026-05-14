@@ -1,12 +1,35 @@
 const express = require('express');
 const router = express.Router();
+const { body, validationResult } = require('express-validator');
 const { authenticateToken } = require('../middleware/auth');
+const { paginate, paginationMeta } = require('../middleware/paginate');
 
-router.get('/', authenticateToken, async (req, res) => {
+function handleValidation(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) { res.status(400).json({ errors: errors.array() }); return true; }
+  return false;
+}
+
+const admetValidation = [
+  body('compound_name').trim().notEmpty().withMessage('compound_name is required').isLength({ max: 255 }),
+  body('toxicity_score').optional().isFloat({ min: 0, max: 100 }),
+  body('overall_score').optional().isFloat({ min: 0, max: 100 }),
+];
+
+router.get('/', authenticateToken, paginate, async (req, res) => {
   try {
     const pool = req.app.get('db');
-    const result = await pool.query('SELECT * FROM admet_properties ORDER BY created_at DESC');
-    res.json(result.rows);
+    const { page, limit, offset } = req.pagination;
+    const search = req.query.search || '';
+    const whereClause = search ? `WHERE compound_name ILIKE $3` : '';
+    const params = search ? [limit, offset, `%${search}%`] : [limit, offset];
+
+    const [rows, count] = await Promise.all([
+      pool.query(`SELECT * FROM admet_properties ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, params),
+      pool.query(`SELECT COUNT(*) FROM admet_properties ${whereClause}`, search ? [`%${search}%`] : []),
+    ]);
+
+    res.json({ data: rows.rows, pagination: paginationMeta(count.rows[0].count, page, limit) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -19,7 +42,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, admetValidation, async (req, res) => {
+  if (handleValidation(req, res)) return;
   try {
     const pool = req.app.get('db');
     const { compound_name, absorption, distribution, metabolism, excretion, toxicity_score, overall_score, ai_output } = req.body;
@@ -31,7 +55,8 @@ router.post('/', authenticateToken, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, admetValidation, async (req, res) => {
+  if (handleValidation(req, res)) return;
   try {
     const pool = req.app.get('db');
     const { compound_name, absorption, distribution, metabolism, excretion, toxicity_score, overall_score, ai_output } = req.body;
