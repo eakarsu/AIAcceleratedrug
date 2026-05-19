@@ -6,6 +6,7 @@ import Layout from './components/Layout';
 import CrudPage from './pages/CrudPage';
 import AiFeaturePage from './pages/AiFeaturePage';
 import AiHistoryPage from './pages/AiHistoryPage';
+import CustomViewsPage from './pages/CustomViewsPage';
 
 const featureConfigs = {
   proteins: {
@@ -530,6 +531,7 @@ function App() {
             <Route key={key} path={`/${key}`} element={<AiFeaturePage config={config} />} />
           ))}
           <Route path="/ai-history" element={<AiHistoryPage />} />
+          <Route path="/custom-views" element={<CustomViewsPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>

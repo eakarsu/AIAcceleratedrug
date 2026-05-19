@@ -108,25 +108,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// 404 handler
-app.use('/api/*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
-
-// Global error handler
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  console.error('[Error]', err.message);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-app.listen(PORT, () => {
-  console.log(`Backend server running on port ${PORT}`);
-});
-
-module.exports = app;
-
-// BATCH_00_AUDIT_MOUNTS
+// BATCH_00_AUDIT_MOUNTS (must be mounted BEFORE the /api/* catch-all 404 handler)
 app.use('/api/de-novo-design', require('./routes/deNovoDesign'));
 app.use('/api/pareto-optimization', require('./routes/paretoOptimization'));
 app.use('/api/patent-landscape', require('./routes/patentLandscape'));
@@ -146,3 +128,24 @@ app.use('/api/gap-virtual-screening-workflow-orchestration', require('./routes/g
 app.use('/api/gap-sar-structure-activity-relationship-analysis', require('./routes/gap_sar_structure_activity_relationship_analysis'));
 app.use('/api/gap-pubchem-chemspider-import-bridges', require('./routes/gap_pubchem_chemspider_import_bridges'));
 app.use('/api/gap-notifications-webhooks-subsystem', require('./routes/gap_notifications_webhooks_subsystem'));
+
+// === Custom Bespoke Views (pipeline + molecule viewer) ===
+app.use('/api/custom-views', require('./routes/customViews'));
+
+// 404 handler — must be registered AFTER all real routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Global error handler
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[Error]', err.message);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Backend server running on port ${PORT}`);
+});
+
+module.exports = app;

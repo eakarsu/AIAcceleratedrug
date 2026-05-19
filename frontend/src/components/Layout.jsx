@@ -73,6 +73,12 @@ const navSections = [
     ],
   },
   {
+    title: 'Custom Views',
+    items: [
+      { path: '/custom-views', label: 'Pipeline Views', icon: '🧪', badge: 'NEW' },
+    ],
+  },
+  {
     title: 'Backlog (Pass 5)',
     items: [
       { path: '/ai-virtual-screening', label: 'Virtual Screening', icon: '🧬', badge: 'NEW' },
