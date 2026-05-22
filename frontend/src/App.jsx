@@ -7,6 +7,10 @@ import CrudPage from './pages/CrudPage';
 import AiFeaturePage from './pages/AiFeaturePage';
 import AiHistoryPage from './pages/AiHistoryPage';
 import CustomViewsPage from './pages/CustomViewsPage';
+import AssayBatchReproducibility from './pages/AssayBatchReproducibility';
+
+import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
+import CodexOperationsFeature from './pages/CodexOperationsFeature';
 
 const featureConfigs = {
   proteins: {
@@ -523,6 +527,9 @@ function App() {
     <BrowserRouter>
       <Layout onLogout={handleLogout}>
         <Routes>
+        <Route path="/codex/custom-viz" element={<CodexCustomVizFeature />} />
+        <Route path="/codex/operations" element={<CodexOperationsFeature />} />
+
           <Route path="/" element={<Dashboard />} />
           {Object.entries(featureConfigs).map(([key, config]) => (
             <Route key={key} path={`/${key}`} element={<CrudPage config={config} />} />
@@ -532,6 +539,7 @@ function App() {
           ))}
           <Route path="/ai-history" element={<AiHistoryPage />} />
           <Route path="/custom-views" element={<CustomViewsPage />} />
+          <Route path="/assay-batch-reproducibility" element={<AssayBatchReproducibility />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Layout>

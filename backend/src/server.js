@@ -131,6 +131,7 @@ app.use('/api/gap-notifications-webhooks-subsystem', require('./routes/gap_notif
 
 // === Custom Bespoke Views (pipeline + molecule viewer) ===
 app.use('/api/custom-views', require('./routes/customViews'));
+app.use('/api/assay-batch-reproducibility', require('./routes/assayBatchReproducibility'));
 
 // 404 handler — must be registered AFTER all real routes
 app.use('/api/*', (req, res) => {
