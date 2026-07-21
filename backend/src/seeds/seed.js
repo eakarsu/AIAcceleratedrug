@@ -1,13 +1,17 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../../../.env') });
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+const demoPassword = process.env.DEMO_PASSWORD;
+if (process.env.CONFIRM_DEMO_SEED !== 'YES' || process.env.NODE_ENV === 'production' || !demoPassword || demoPassword.length < 12) {
+  throw new Error('Demo seed requires CONFIRM_DEMO_SEED=YES, non-production NODE_ENV, and DEMO_PASSWORD of at least 12 characters');
+}
 
-const pool = new Pool({
+const pool = new Pool(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : {
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || 'drug_discovery',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
+  password: process.env.DB_PASSWORD,
 });
 
 async function seed() {
@@ -264,7 +268,7 @@ async function seed() {
     `);
 
     // Seed Users
-    const hashedPassword = await bcrypt.hash('password123', 10);
+    const hashedPassword = await bcrypt.hash(demoPassword, 10);
     await client.query(`
       INSERT INTO users (email, password, name, role) VALUES
       ('admin@drugdiscovery.com', '${hashedPassword}', 'Dr. Sarah Chen', 'admin'),

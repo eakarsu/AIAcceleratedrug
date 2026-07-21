@@ -7,12 +7,6 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleAutoFill = () => {
-    setEmail('admin@drugdiscovery.com');
-    setPassword('password123');
-    setError('');
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -34,13 +28,6 @@ export default function Login({ onLogin }) {
           <div className="icon">Rx</div>
           <h2>AI Drug Discovery</h2>
           <p>Accelerating pharmaceutical innovation with AI</p>
-        </div>
-
-        <div className="login-autofill">
-          <button type="button" onClick={handleAutoFill}>
-            Auto-fill Credentials
-          </button>
-          <p>Click to populate demo login credentials</p>
         </div>
 
         {error && <div className="login-error">{error}</div>}

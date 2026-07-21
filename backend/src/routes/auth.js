@@ -3,8 +3,10 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
+const { randomUUID } = require('crypto');
+const { authenticateToken } = require('../middleware/auth');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'drug-discovery-jwt-secret-2024';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 function handleValidation(req, res) {
   const errors = validationResult(req);
@@ -40,12 +42,12 @@ router.post(
       }
 
       const token = jwt.sign(
-        { id: user.id, email: user.email, name: user.name, role: user.role },
+        { id: user.id, email: user.email, name: user.name, role: user.role || 'researcher', tenantId: user.tenant_id },
         JWT_SECRET,
         { expiresIn: '24h' }
       );
 
-      res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+      res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role || 'researcher', tenantId: user.tenant_id } });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -59,13 +61,12 @@ router.post(
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
     body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Name must be 2-100 characters'),
-    body('role').optional().isIn(['admin', 'researcher', 'scientist']).withMessage('Invalid role'),
   ],
   async (req, res) => {
     if (handleValidation(req, res)) return;
     try {
       const pool = req.app.get('db');
-      const { email, password, name, role } = req.body;
+      const { email, password, name } = req.body;
 
       const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
       if (existing.rows.length > 0) {
@@ -74,22 +75,27 @@ router.post(
 
       const hashedPassword = await bcrypt.hash(password, 12);
       const result = await pool.query(
-        'INSERT INTO users (email, password, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
-        [email, hashedPassword, name, role || 'researcher']
+        `INSERT INTO users (email, password, name, role, tenant_id)
+         VALUES ($1, $2, $3, 'admin', $4) RETURNING id, email, name, role, tenant_id`,
+        [email, hashedPassword, name, randomUUID()]
       );
 
       const user = result.rows[0];
       const token = jwt.sign(
-        { id: user.id, email: user.email, name: user.name, role: user.role },
+        { id: user.id, email: user.email, name: user.name, role: user.role, tenantId: user.tenant_id },
         JWT_SECRET,
         { expiresIn: '24h' }
       );
 
-      res.status(201).json({ token, user });
+      res.status(201).json({ token, user: { ...user, tenantId: user.tenant_id } });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   }
 );
+
+router.get('/me', authenticateToken, (req, res) => {
+  res.json({ user: req.user });
+});
 
 module.exports = router;
