@@ -79,6 +79,7 @@ app.set('db', pool);
 
 // Apply general limiter to all API routes
 app.use('/api', generalLimiter);
+app.use('/api', require('../runtimeAcceptance'));
 
 app.use('/api', (req, res, next) => {
   const supported = ['/auth', '/health', '/evidence-workflows'];
