@@ -7,6 +7,16 @@ const { paginate, paginationMeta } = require('../middleware/paginate');
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'anthropic/claude-3-5-sonnet-20241022';
+const DEFAULT_AI_TIMEOUT_MS = 45000;
+const DEFAULT_AI_ATTEMPTS = 2;
+
+function aiServiceError(message, code, httpStatus = 502, retryable = false) {
+  const error = new Error(message);
+  error.code = code;
+  error.httpStatus = httpStatus;
+  error.retryable = retryable;
+  return error;
+}
 
 // Parse AI JSON response robustly
 function parseAIJson(text) {
@@ -34,8 +44,18 @@ async function callOpenRouter(prompt, systemPrompt, opts = {}) {
     throw err;
   }
   const model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+  const configuredTimeout = Number(process.env.AI_REQUEST_TIMEOUT_MS || DEFAULT_AI_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout >= 5000
+    ? Math.min(configuredTimeout, 180000)
+    : DEFAULT_AI_TIMEOUT_MS;
+  const configuredAttempts = Number(process.env.AI_REQUEST_ATTEMPTS || DEFAULT_AI_ATTEMPTS);
+  const maxAttempts = Number.isInteger(configuredAttempts)
+    ? Math.max(1, Math.min(configuredAttempts, 3))
+    : DEFAULT_AI_ATTEMPTS;
   let lastErr;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(OPENROUTER_URL, {
         method: 'POST',
@@ -54,14 +74,48 @@ async function callOpenRouter(prompt, systemPrompt, opts = {}) {
           temperature: opts.temperature ?? 0.2,
           max_tokens: opts.max_tokens ?? 4000,
         }),
+        signal: controller.signal,
       });
 
-      const data = await response.json();
-      if (data.error) throw new Error(data.error.message || 'OpenRouter API error');
-      return data.choices[0].message.content;
+      const responseText = await response.text();
+      let data;
+      try { data = JSON.parse(responseText); } catch (_) {
+        throw aiServiceError('AI provider returned an unreadable response.', 'AI_PROVIDER_INVALID_RESPONSE', 502, response.status >= 500);
+      }
+
+      if (!response.ok || data.error) {
+        if (response.status === 401 || response.status === 403) {
+          throw aiServiceError('AI provider rejected the configured credential.', 'AI_PROVIDER_AUTH', 503);
+        }
+        if (response.status === 402) {
+          throw aiServiceError('AI provider account has insufficient credits.', 'AI_PROVIDER_CREDITS', 503);
+        }
+        if (response.status === 429) {
+          throw aiServiceError('AI provider rate limit reached. Please try again shortly.', 'AI_PROVIDER_RATE_LIMIT', 429, true);
+        }
+        if (response.status >= 500) {
+          throw aiServiceError('AI provider is temporarily unavailable.', 'AI_PROVIDER_UNAVAILABLE', 503, true);
+        }
+        throw aiServiceError('AI provider rejected the request.', 'AI_PROVIDER_REQUEST_REJECTED', 502);
+      }
+
+      const content = data?.choices?.[0]?.message?.content;
+      if (typeof content !== 'string' || !content.trim()) {
+        throw aiServiceError('AI provider returned an empty response.', 'AI_PROVIDER_EMPTY_RESPONSE', 502, true);
+      }
+      return content;
     } catch (err) {
-      lastErr = err;
-      if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt));
+      if (err.name === 'AbortError') {
+        lastErr = aiServiceError('AI analysis timed out. Please retry.', 'AI_PROVIDER_TIMEOUT', 504, true);
+      } else if (err.httpStatus) {
+        lastErr = err;
+      } else {
+        lastErr = aiServiceError('Unable to reach the AI provider.', 'AI_PROVIDER_NETWORK', 502, true);
+      }
+      if (attempt < maxAttempts && lastErr.retryable) await new Promise(r => setTimeout(r, 750 * attempt));
+      else break;
+    } finally {
+      clearTimeout(timeout);
     }
   }
   throw lastErr;
@@ -102,6 +156,9 @@ router.get('/history', authenticateToken, paginate, async (req, res) => {
     const whereClause = feature
       ? `WHERE user_id = $3 AND feature = $4`
       : `WHERE user_id = $3`;
+    const countWhereClause = feature
+      ? `WHERE user_id = $1 AND feature = $2`
+      : `WHERE user_id = $1`;
     const params = feature
       ? [limit, offset, req.user.id, feature]
       : [limit, offset, req.user.id];
@@ -111,11 +168,33 @@ router.get('/history', authenticateToken, paginate, async (req, res) => {
         `SELECT id, feature, input_data, parsed_result, created_at FROM ai_results ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
         params
       ),
-      pool.query(`SELECT COUNT(*) FROM ai_results ${whereClause}`, params.slice(2)),
+      pool.query(`SELECT COUNT(*) FROM ai_results ${countWhereClause}`, params.slice(2)),
     ]);
 
     res.json({ data: rows.rows, pagination: paginationMeta(count.rows[0].count, page, limit) });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Authenticated molecular depiction proxy. PubChem standardizes and renders
+// the submitted SMILES; a failed depiction never changes the stored design.
+router.get('/molecule-depiction', authenticateToken, async (req, res) => {
+  const smiles = String(req.query.smiles || '').trim();
+  if (!smiles || smiles.length > 2000) return res.status(400).json({ error: 'A valid SMILES value is required.' });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const base = process.env.PUBCHEM_BASE || 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
+    const response = await fetch(`${base}/compound/smiles/${encodeURIComponent(smiles)}/PNG?image_size=large`, { signal: controller.signal });
+    if (!response.ok) return res.status(response.status === 404 ? 404 : 502).json({ error: 'Molecular depiction is unavailable for this structure.' });
+    const image = await response.buffer();
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    return res.send(image);
+  } catch (error) {
+    return res.status(error.name === 'AbortError' ? 504 : 502).json({ error: error.name === 'AbortError' ? 'Molecular depiction timed out.' : 'Unable to render the molecular depiction.' });
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 // POST /api/ai/protein-design
@@ -169,6 +248,74 @@ Target Organism: ${target_organism}`;
 
       res.json({ result: parsed || aiResponse, raw: aiResponse, model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL });
     } catch (err) { res.status(500).json({ error: err.message }); }
+  }
+);
+
+// POST /api/ai/drug-design — source-transparent small-molecule proposal
+router.post(
+  '/drug-design',
+  authenticateToken,
+  [
+    body('target').notEmpty().withMessage('target is required'),
+    body('modality').notEmpty().withMessage('modality is required'),
+    body('desired_profile').notEmpty().withMessage('desired_profile is required'),
+    body('reference_smiles').optional().isString(),
+    body('chemistry_constraints').optional().isString(),
+  ],
+  async (req, res) => {
+    if (handleValidation(req, res)) return;
+    try {
+      const { target, modality, desired_profile, reference_smiles, chemistry_constraints } = req.body;
+      const prompt = `Propose one research-stage small-molecule design and return ONLY valid JSON (no markdown or prose):
+{
+  "design_name": "...",
+  "canonical_smiles": "...",
+  "molecular_formula": "...",
+  "molecular_weight": 0,
+  "target": "...",
+  "modality": "...",
+  "mechanism_hypothesis": "...",
+  "design_rationale": "...",
+  "predicted_properties": {
+    "logp": 0,
+    "tpsa_A2": 0,
+    "h_bond_donors": 0,
+    "h_bond_acceptors": 0,
+    "rotatable_bonds": 0,
+    "solubility_class": "..."
+  },
+  "structural_alerts": ["..."],
+  "selectivity_strategy": ["..."],
+  "synthesis_considerations": ["..."],
+  "validation_plan": ["..."],
+  "confidence": { "level": "low|medium|high", "limitations": ["..."] }
+}
+
+Target: ${target}
+Modality: ${modality}
+Desired profile: ${desired_profile}
+Reference SMILES: ${reference_smiles || 'No reference supplied; propose a new research hypothesis'}
+Constraints: ${chemistry_constraints || 'Apply common medicinal-chemistry and safety filters'}
+
+The SMILES must be syntactically valid. Do not claim measured efficacy, safety, synthesis success, or clinical suitability.`;
+      const systemPrompt = 'You are a medicinal chemistry design assistant. Return only valid JSON. Clearly distinguish design hypotheses from measured evidence.';
+      const aiResponse = await callOpenRouter(prompt, systemPrompt, { max_tokens: 4500 });
+      const parsed = parseAIJson(aiResponse);
+      const pool = req.app.get('db');
+      await saveAiResult(pool, req.user.id, 'drug-design', { target, modality, desired_profile, reference_smiles, chemistry_constraints }, parsed, aiResponse);
+
+      if (parsed?.design_name && parsed?.canonical_smiles) {
+        await pool.query(
+          `INSERT INTO compounds(name,formula,molecular_weight,smiles,source,status,description)
+           VALUES($1,$2,$3,$4,$5,$6,$7)`,
+          [parsed.design_name, parsed.molecular_formula || null, parsed.molecular_weight || null,
+            parsed.canonical_smiles, 'AI research design', 'lead',
+            `${parsed.design_rationale || 'AI-generated research hypothesis'} Validation required before experimental use.`]
+        ).catch(() => {});
+      }
+
+      res.json({ result: parsed || aiResponse, raw: aiResponse, model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL, design_kind: 'ai_generated_research_hypothesis' });
+    } catch (err) { res.status(err.httpStatus || 500).json({ error: err.message }); }
   }
 );
 
@@ -1263,27 +1410,27 @@ Compounds: ${JSON.stringify(compounds.slice(0, 200))}`;
   }
 );
 
-// NEEDS-CREDS: PubChem lookup. Env var: PUBCHEM_ENABLED (any value). Public
-// API needs no key but we gate to keep behaviour explicit. Returns 503 if
-// the integration is not enabled.
-// Documented env: PUBCHEM_ENABLED (set to '1' to enable), PUBCHEM_BASE
-// (default https://pubchem.ncbi.nlm.nih.gov/rest/pug).
+// PubChem PUG REST is public and does not require a credential. PUBCHEM_BASE
+// remains configurable for a controlled mirror or test endpoint.
 router.post(
   '/pubchem-lookup',
   authenticateToken,
   [body('query').notEmpty().withMessage('query required (compound name or SMILES)')],
   async (req, res) => {
     if (handleValidation(req, res)) return;
-    if (!process.env.PUBCHEM_ENABLED) {
-      return res.status(503).json({ error: 'PubChem integration not enabled.', missing: 'PUBCHEM_ENABLED' });
-    }
     try {
       const base = process.env.PUBCHEM_BASE || 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
       const { query, search_type } = req.body;
       const path = (search_type === 'smiles') ? 'compound/smiles' : 'compound/name';
       const url = `${base}/${path}/${encodeURIComponent(query)}/property/MolecularFormula,MolecularWeight,CanonicalSMILES,InChIKey/JSON`;
-      const r = await fetch(url);
-      const data = await r.json();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      const r = await fetch(url, { signal: controller.signal });
+      const responseText = await r.text();
+      clearTimeout(timeout);
+      if (!r.ok) return res.status(r.status === 404 ? 404 : 502).json({ error: r.status === 404 ? 'Compound was not found in PubChem.' : 'PubChem is temporarily unavailable.' });
+      let data;
+      try { data = JSON.parse(responseText); } catch (_) { return res.status(502).json({ error: 'PubChem returned an unreadable response.' }); }
       const pool = req.app.get('db');
       await saveAiResult(pool, req.user.id, 'pubchem-lookup', { query, search_type }, data, JSON.stringify(data));
       res.json({ result: data });
@@ -1326,9 +1473,9 @@ Prior data: ${JSON.stringify(prior_data || {})}`;
   }
 );
 
-// NEEDS-CREDS: lab automation orchestrator. Env var: LAB_AUTOMATION_URL.
-// Without it, returns 503. With it, AI plans the protocol; we do NOT
-// execute against the robotics platform — only return the plan.
+// The AI planner works without robotics credentials. LAB_AUTOMATION_URL and
+// LAB_AUTOMATION_TOKEN are required only for a future explicit execution step;
+// this endpoint never controls equipment.
 // Documented env: LAB_AUTOMATION_URL (target Opentrons / robotics endpoint),
 // LAB_AUTOMATION_TOKEN (bearer token for that platform; not used in plan-only mode).
 router.post(
@@ -1337,9 +1484,6 @@ router.post(
   [body('experiment').notEmpty().withMessage('experiment required')],
   async (req, res) => {
     if (handleValidation(req, res)) return;
-    if (!process.env.LAB_AUTOMATION_URL) {
-      return res.status(503).json({ error: 'Lab automation not configured.', missing: 'LAB_AUTOMATION_URL' });
-    }
     try {
       const { experiment, plate_format, replicates, target } = req.body;
       const prompt = `Plan a lab automation protocol. Return ONLY JSON:
@@ -1353,7 +1497,13 @@ Target: ${target || 'unspecified'}`;
       const parsed = parseAIJson(aiResponse);
       const pool = req.app.get('db');
       await saveAiResult(pool, req.user.id, 'lab-automation-plan', { experiment, plate_format, replicates }, parsed, aiResponse);
-      res.json({ result: parsed || aiResponse, raw: aiResponse, plan_only: true, model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL });
+      res.json({
+        result: parsed || aiResponse,
+        raw: aiResponse,
+        plan_only: true,
+        robotics_integration: process.env.LAB_AUTOMATION_URL ? 'configured_not_executed' : 'not_configured',
+        model: process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
+      });
     } catch (err) {
       if (err.code === 'AI_KEY_MISSING') return res.status(503).json({ error: err.message, missing: 'OPENROUTER_API_KEY' });
       res.status(500).json({ error: err.message });

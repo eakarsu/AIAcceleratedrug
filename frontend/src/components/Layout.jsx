@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from '../router/SimpleRouter';
 
 const navSections = [
   {
@@ -11,6 +11,8 @@ const navSections = [
   {
     title: 'Discovery',
     items: [
+      { path: '/discovery', label: 'Scientific Workbench', icon: '🧪', badge: 'CORE' },
+      { path: '/advanced-discovery', label: 'Advanced Discovery', icon: '🧠', badge: 'NEW' },
       { path: '/proteins', label: 'Protein Design', icon: '🧬' },
       { path: '/targets', label: 'Drug Targets', icon: '🎯' },
       { path: '/drug-candidates', label: 'Drug Candidates', icon: '💊' },
@@ -41,6 +43,7 @@ const navSections = [
     title: 'AI Tools',
     items: [
       { path: '/ai-protein-design', label: 'AI Protein Design', icon: '🤖', badge: 'AI' },
+      { path: '/ai-drug-design', label: 'AI Drug Designer', icon: '⚗️', badge: 'AI' },
       { path: '/ai-binding-affinity', label: 'AI Binding Affinity', icon: '🤖', badge: 'AI' },
       { path: '/ai-toxicity', label: 'AI Toxicity Predict', icon: '🤖', badge: 'AI' },
       { path: '/ai-structure', label: 'AI Structure Predict', icon: '🤖', badge: 'AI' },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../router/SimpleRouter';
 import { api } from '../services/api';
 
 const featureCards = [
@@ -21,6 +21,7 @@ const featureCards = [
 
 const aiCards = [
   { path: '/ai-protein-design', icon: '🧬', label: 'AI Protein Design', desc: 'Generate novel protein sequences', color: '#6366f1' },
+  { path: '/ai-drug-design', icon: '⚗️', label: 'AI Drug Designer', desc: 'Generate and visualize small-molecule hypotheses', color: '#0f766e' },
   { path: '/ai-binding-affinity', icon: '🔗', label: 'AI Binding Affinity', desc: 'Predict binding strength', color: '#8b5cf6' },
   { path: '/ai-toxicity', icon: '☠️', label: 'AI Toxicity Predict', desc: 'Assess compound safety', color: '#a855f7' },
   { path: '/ai-structure', icon: '🏗️', label: 'AI Structure Predict', desc: 'Predict 3D protein structure', color: '#7c3aed' },

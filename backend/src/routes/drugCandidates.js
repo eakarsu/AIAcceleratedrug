@@ -34,10 +34,11 @@ router.get('/', authenticateToken, paginate, async (req, res) => {
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const countParams = params.slice(2);
+    const countWhereClause = whereClause.replace(/\$(\d+)/g, (_match, index) => `$${Number(index) - 2}`);
 
     const [rows, count] = await Promise.all([
       pool.query(`SELECT * FROM drug_candidates ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, params),
-      pool.query(`SELECT COUNT(*) FROM drug_candidates ${whereClause}`, countParams),
+      pool.query(`SELECT COUNT(*) FROM drug_candidates ${countWhereClause}`, countParams),
     ]);
 
     res.json({ data: rows.rows, pagination: paginationMeta(count.rows[0].count, page, limit) });

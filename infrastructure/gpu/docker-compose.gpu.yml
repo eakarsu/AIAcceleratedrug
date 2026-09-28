@@ -1,0 +1,69 @@
+name: aiacceleratedrug-gpu-runners
+
+# These services intentionally require prebuilt, digest-pinned images that
+# implement runner-contract.openapi.yaml. Upstream research CLIs are not HTTP
+# services and must not be presented as accepted application runners.
+services:
+  esmc-runner:
+    image: ${ESMC_RUNNER_IMAGE:?Set ESMC_RUNNER_IMAGE to an accepted digest-pinned image}
+    gpus: all
+    environment:
+      PORT: 8080
+      MODEL_KEY: esmc
+      MODEL_VERSION: ${ESMC_MODEL_VERSION:?Set the accepted ESM C checkpoint version}
+      MODEL_RUNNER_TOKEN: ${ESMC_RUNNER_TOKEN:?Set ESMC_RUNNER_TOKEN}
+      MODEL_CACHE: /models
+      ARTIFACT_ROOT: /artifacts
+    volumes:
+      - ${GPU_MODEL_CACHE_ROOT:?Set GPU_MODEL_CACHE_ROOT}/esmc:/models:ro
+      - ${GPU_ARTIFACT_ROOT:?Set GPU_ARTIFACT_ROOT}/esmc:/artifacts
+    ports: ["127.0.0.1:${ESMC_RUNNER_PORT:-35601}:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  boltz2-runner:
+    image: ${BOLTZ2_RUNNER_IMAGE:?Set BOLTZ2_RUNNER_IMAGE to an accepted digest-pinned image}
+    gpus: all
+    environment:
+      PORT: 8080
+      MODEL_KEY: boltz-2
+      MODEL_VERSION: ${BOLTZ2_MODEL_VERSION:?Set the accepted Boltz-2 checkpoint version}
+      MODEL_RUNNER_TOKEN: ${BOLTZ2_RUNNER_TOKEN:?Set BOLTZ2_RUNNER_TOKEN}
+      MODEL_CACHE: /models
+      ARTIFACT_ROOT: /artifacts
+    volumes:
+      - ${GPU_MODEL_CACHE_ROOT:?Set GPU_MODEL_CACHE_ROOT}/boltz-2:/models:ro
+      - ${GPU_ARTIFACT_ROOT:?Set GPU_ARTIFACT_ROOT}/boltz-2:/artifacts
+    ports: ["127.0.0.1:${BOLTZ2_RUNNER_PORT:-35602}:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  diffdock-runner:
+    image: ${DIFFDOCK_RUNNER_IMAGE:?Set DIFFDOCK_RUNNER_IMAGE to an accepted digest-pinned image}
+    gpus: all
+    environment:
+      PORT: 8080
+      MODEL_KEY: diffdock
+      MODEL_VERSION: ${DIFFDOCK_MODEL_VERSION:?Set the accepted DiffDock checkpoint version}
+      MODEL_RUNNER_TOKEN: ${DIFFDOCK_RUNNER_TOKEN:?Set DIFFDOCK_RUNNER_TOKEN}
+      MODEL_CACHE: /models
+      ARTIFACT_ROOT: /artifacts
+    volumes:
+      - ${GPU_MODEL_CACHE_ROOT:?Set GPU_MODEL_CACHE_ROOT}/diffdock:/models:ro
+      - ${GPU_ARTIFACT_ROOT:?Set GPU_ARTIFACT_ROOT}/diffdock:/artifacts
+    ports: ["127.0.0.1:${DIFFDOCK_RUNNER_PORT:-35603}:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+

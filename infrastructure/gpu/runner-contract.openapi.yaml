@@ -1,0 +1,77 @@
+openapi: 3.1.0
+info:
+  title: AIAcceleratedrug Scientific GPU Runner Contract
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: Runner, accelerator, checkpoint, and artifact store are ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, contractVersion, installedModels, accelerator]
+                properties:
+                  status: { const: ready }
+                  contractVersion: { const: "1.0" }
+                  accelerator:
+                    type: object
+                    required: [type, available]
+                    properties:
+                      type: { enum: [cuda, rocm, mps, cpu] }
+                      available: { type: boolean }
+                      deviceName: { type: string }
+                  installedModels:
+                    type: array
+                    items:
+                      type: object
+                      required: [key, version, weightsChecksumSha256]
+                      properties:
+                        key: { type: string }
+                        version: { type: string }
+                        weightsChecksumSha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+  /predict:
+    post:
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, task]
+              properties:
+                model:
+                  type: object
+                  required: [key, version]
+                  properties:
+                    key: { type: string }
+                    version: { type: string }
+                task: { type: string }
+                protein: { type: [object, "null"] }
+                compound: { type: [object, "null"] }
+                options: { type: object }
+                constraints: { type: object }
+      responses:
+        "200":
+          description: Versioned scientific result with uncertainty and provenance
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [headline, summary, uncertainty, applicability, provenance, artifacts]
+                properties:
+                  headline: { type: string }
+                  summary: { type: string }
+                  uncertainty: { type: object }
+                  applicability: { type: object }
+                  provenance:
+                    type: object
+                    required: [modelKey, modelVersion, weightsChecksumSha256, generatedAt]
+                  artifacts: { type: array, items: { type: object } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+

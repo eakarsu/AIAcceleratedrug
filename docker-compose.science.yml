@@ -1,0 +1,38 @@
+services:
+  scientific-postgres:
+    build:
+      context: ./infrastructure/postgres
+    container_name: aiacceleratedrug-scientific-postgres
+    environment:
+      POSTGRES_DB: ${SCIENTIFIC_POSTGRES_DB:-aiacceleratedrug_science}
+      POSTGRES_USER: ${SCIENTIFIC_POSTGRES_USER:-drug_app}
+      POSTGRES_PASSWORD: ${SCIENTIFIC_POSTGRES_PASSWORD:-local-science-password}
+    ports:
+      - "127.0.0.1:${SCIENTIFIC_POSTGRES_PORT:-35432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - aiacceleratedrug_scientific_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  model-runner:
+    build:
+      context: ./model-runner
+    container_name: aiacceleratedrug-model-runner
+    environment:
+      PORT: 8080
+      MODEL_RUNNER_TOKEN: ${MODEL_RUNNER_TOKEN:-local-model-runner-token}
+    ports:
+      - "127.0.0.1:${MODEL_RUNNER_PORT:-35580}:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  aiacceleratedrug_scientific_pgdata:

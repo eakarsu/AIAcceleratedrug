@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from './router/SimpleRouter';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Layout from './components/Layout';
@@ -8,6 +8,9 @@ import AiFeaturePage from './pages/AiFeaturePage';
 import AiHistoryPage from './pages/AiHistoryPage';
 import CustomViewsPage from './pages/CustomViewsPage';
 import AssayBatchReproducibility from './pages/AssayBatchReproducibility';
+import DiscoveryWorkspace from './pages/DiscoveryWorkspace';
+import AdvancedDiscoveryWorkspace from './pages/AdvancedDiscoveryWorkspace';
+import ProteinStructuresPage from './pages/ProteinStructuresPage';
 
 import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
 import CodexOperationsFeature from './pages/CodexOperationsFeature';
@@ -236,7 +239,7 @@ const featureConfigs = {
   },
 };
 
-const aiFeatureConfigs = {
+export const aiFeatureConfigs = {
   'ai-protein-design': {
     title: 'AI Protein Design',
     subtitle: 'Generate novel protein sequences using AI',
@@ -246,6 +249,21 @@ const aiFeatureConfigs = {
       { key: 'target', label: 'Target Protein/Receptor', placeholder: 'e.g., EGFR, PD-L1, TNF-alpha' },
       { key: 'properties', label: 'Desired Properties', placeholder: 'e.g., High binding affinity, good stability, low immunogenicity', type: 'textarea' },
       { key: 'constraints', label: 'Constraints (optional)', placeholder: 'e.g., Sequence length < 200, avoid glycosylation sites', type: 'textarea' },
+      { key: 'sequence_length', label: 'Sequence Length (residues)', type: 'number', placeholder: 'e.g., 140' },
+      { key: 'target_organism', label: 'Target Organism', placeholder: 'e.g., Homo sapiens' },
+    ],
+  },
+  'ai-drug-design': {
+    title: 'AI Drug Designer',
+    subtitle: 'Propose and visualize a research-stage small-molecule design',
+    icon: '⚗️',
+    apiCall: 'aiDrugDesign',
+    fields: [
+      { key: 'target', label: 'Therapeutic Target', placeholder: 'e.g., EGFR kinase domain' },
+      { key: 'modality', label: 'Design Modality', type: 'select', options: ['Reversible small molecule', 'Covalent small molecule', 'Molecular glue'] },
+      { key: 'desired_profile', label: 'Desired Product Profile', type: 'textarea', placeholder: 'e.g., oral, selective, CNS-sparing, nanomolar biochemical potency' },
+      { key: 'reference_smiles', label: 'Reference SMILES (optional)', type: 'textarea', placeholder: 'e.g., CC(=O)OC1=CC=CC=C1C(=O)O' },
+      { key: 'chemistry_constraints', label: 'Chemistry and Safety Constraints (optional)', type: 'textarea', placeholder: 'e.g., MW below 500, no PAINS, avoid hERG and CYP3A4 inhibition' },
     ],
   },
   'ai-binding-affinity': {
@@ -255,7 +273,9 @@ const aiFeatureConfigs = {
     apiCall: 'aiBindingAffinity',
     fields: [
       { key: 'protein', label: 'Protein/Ligand', placeholder: 'e.g., NEO-P1 Anti-EGFR antibody' },
+      { key: 'protein_id', label: 'Protein Record ID (optional)', placeholder: 'e.g., P00533 or internal protein ID' },
       { key: 'target', label: 'Target', placeholder: 'e.g., EGFR kinase domain' },
+      { key: 'ligand_smiles', label: 'Ligand SMILES (optional)', type: 'textarea', placeholder: 'e.g., CC(=O)OC1=CC=CC=C1C(=O)O' },
       { key: 'conditions', label: 'Conditions (optional)', placeholder: 'e.g., pH 7.4, 37°C, 150mM NaCl', type: 'textarea' },
     ],
   },
@@ -265,9 +285,9 @@ const aiFeatureConfigs = {
     icon: '☠️',
     apiCall: 'aiToxicityPrediction',
     fields: [
-      { key: 'compound', label: 'Compound Name', placeholder: 'e.g., DRC-001 Nexatinib' },
+      { key: 'compound_name', label: 'Compound Name', placeholder: 'e.g., DRC-001 Nexatinib' },
       { key: 'smiles', label: 'SMILES (optional)', placeholder: 'e.g., CC1=CC(=CC=C1NC(=O)...', type: 'textarea' },
-      { key: 'dose', label: 'Dose Range (optional)', placeholder: 'e.g., 10-100 mg/day oral' },
+      { key: 'dose_mg_per_kg', label: 'Dose (mg/kg, optional)', type: 'number', placeholder: 'e.g., 10' },
     ],
   },
   'ai-structure': {
@@ -288,6 +308,8 @@ const aiFeatureConfigs = {
     fields: [
       { key: 'drugA', label: 'Drug A', placeholder: 'e.g., DRC-001 Nexatinib' },
       { key: 'drugB', label: 'Drug B', placeholder: 'e.g., Ketoconazole' },
+      { key: 'mechanism1', label: 'Drug A Mechanism (optional)', placeholder: 'e.g., irreversible EGFR kinase inhibitor' },
+      { key: 'mechanism2', label: 'Drug B Mechanism (optional)', placeholder: 'e.g., strong CYP3A4 inhibitor' },
       { key: 'patientProfile', label: 'Patient Profile (optional)', placeholder: 'e.g., 65yo male, renal impairment', type: 'textarea' },
     ],
   },
@@ -477,11 +499,12 @@ const aiFeatureConfigs = {
       { key: 'indication', label: 'Indication', placeholder: 'e.g., NSCLC' },
       { key: 'phase', label: 'Phase', type: 'select', options: ['Phase 1', 'Phase 2', 'Phase 3'] },
       { key: 'biomarkers', label: 'Biomarkers (JSON array)', type: 'json-array', placeholder: '["EGFR", "PD-L1"]' },
+      { key: 'prior_data', label: 'Prior Data (JSON object, optional)', type: 'json-array', placeholder: '{"orr_pct":42,"median_pfs_months":8.5,"grade3_ae_pct":18}' },
     ],
   },
   'ai-lab-automation-plan': {
     title: 'Lab Automation Planner',
-    subtitle: 'Plan a lab automation protocol (requires LAB_AUTOMATION_URL env var)',
+    subtitle: 'Plan a reviewable lab automation protocol; robotics execution remains disabled',
     icon: '🤖',
     apiCall: 'aiLabAutomationPlan',
     fields: [
@@ -531,7 +554,10 @@ function App() {
         <Route path="/codex/operations" element={<CodexOperationsFeature />} />
 
           <Route path="/" element={<Dashboard />} />
-          {Object.entries(featureConfigs).map(([key, config]) => (
+          <Route path="/discovery" element={<DiscoveryWorkspace />} />
+          <Route path="/advanced-discovery" element={<AdvancedDiscoveryWorkspace />} />
+          <Route path="/structures" element={<ProteinStructuresPage />} />
+          {Object.entries(featureConfigs).filter(([key]) => key !== 'structures').map(([key, config]) => (
             <Route key={key} path={`/${key}`} element={<CrudPage config={config} />} />
           ))}
           {Object.entries(aiFeatureConfigs).map(([key, config]) => (

@@ -1,42 +1,83 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { api } from '../services/api';
+import { AI_EXAMPLE_SCENARIOS, buildAiExample } from '../utils/aiExamples';
+import AIDesignVisualization from '../components/AIDesignVisualization';
 
-function JsonViewer({ data, depth = 0 }) {
-  if (data === null || data === undefined) return <span style={{ color: '#94a3b8' }}>null</span>;
-  if (typeof data === 'boolean') return <span style={{ color: '#0891b2' }}>{String(data)}</span>;
-  if (typeof data === 'number') return <span style={{ color: '#7c3aed' }}>{data}</span>;
-  if (typeof data === 'string') {
-    if (data.length > 200) return <span style={{ color: '#059669' }}>"{data.substring(0, 200)}..."</span>;
-    return <span style={{ color: '#059669' }}>"{data}"</span>;
-  }
-  if (Array.isArray(data)) {
-    if (data.length === 0) return <span>[]</span>;
+function humanize(key) {
+  return String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function displayValue(value) {
+  if (value === null || value === undefined || value === '') return 'Not reported';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
+function StructuredBlock({ label, value, depth = 0 }) {
+  if (Array.isArray(value)) {
     return (
-      <div style={{ paddingLeft: depth > 0 ? '16px' : 0 }}>
-        {data.map((item, i) => (
-          <div key={i} style={{ marginBottom: '4px', borderLeft: '2px solid #e2e8f0', paddingLeft: '12px' }}>
-            <JsonViewer data={item} depth={depth + 1} />
+      <section className={`ai-report-section depth-${Math.min(depth, 2)}`}>
+        {label && <h3>{humanize(label)}</h3>}
+        {value.length === 0 ? <p className="ai-report-empty">No items reported.</p> : (
+          <div className="ai-report-list">
+            {value.map((item, index) => (
+              typeof item === 'object' && item !== null
+                ? <article className="ai-report-item" key={`${label}-${index}`}><StructuredBlock value={item} depth={depth + 1} /></article>
+                : <div className="ai-report-bullet" key={`${label}-${index}`}><span>✓</span><p>{displayValue(item)}</p></div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
+      </section>
     );
   }
-  if (typeof data === 'object') {
+
+  if (typeof value === 'object' && value !== null) {
     return (
-      <div style={{ paddingLeft: depth > 0 ? '16px' : 0 }}>
-        {Object.entries(data).map(([key, val]) => (
-          <div key={key} style={{ marginBottom: '6px' }}>
-            <span style={{ color: '#0f766e', fontWeight: 600, fontSize: '12px' }}>
-              {key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}:
-            </span>{' '}
-            <JsonViewer data={val} depth={depth + 1} />
-          </div>
-        ))}
-      </div>
+      <section className={`ai-report-section depth-${Math.min(depth, 2)}`}>
+        {label && <h3>{humanize(label)}</h3>}
+        <div className="ai-report-grid">
+          {Object.entries(value).map(([key, nestedValue]) => (
+            typeof nestedValue === 'object' && nestedValue !== null
+              ? <StructuredBlock key={key} label={key} value={nestedValue} depth={depth + 1} />
+              : <div className="ai-report-metric" key={key}><span>{humanize(key)}</span><strong>{displayValue(nestedValue)}</strong></div>
+          ))}
+        </div>
+      </section>
     );
   }
-  return <span>{String(data)}</span>;
+
+  return <div className="ai-report-metric"><span>{humanize(label)}</span><strong>{displayValue(value)}</strong></div>;
+}
+
+function ProfessionalAIReport({ data }) {
+  const headline = data.headline || data.title || data.protein_name || data.recommendation || null;
+  const summaryKey = ['executiveSummary', 'executive_summary', 'summary', 'overall_assessment', 'overall_reasoning', 'overview']
+    .find((key) => typeof data[key] === 'string');
+  const excluded = new Set(['headline', 'title', 'protein_name', 'recommendation', summaryKey].filter(Boolean));
+
+  return (
+    <div className="ai-professional-report">
+      {(headline || summaryKey) && (
+        <header className="ai-report-hero">
+          <span>Decision brief</span>
+          {headline && <h2>{headline}</h2>}
+          {summaryKey && <p>{data[summaryKey]}</p>}
+        </header>
+      )}
+      <div className="ai-report-sections">
+        {Object.entries(data)
+          .filter(([key]) => !excluded.has(key))
+          .map(([key, value]) => <StructuredBlock key={key} label={key} value={value} />)}
+      </div>
+      <footer className="ai-report-boundary">
+        <strong>Research-use boundary</strong>
+        <span>Validate this AI output against source records, configured scientific models, and accountable expert review before making research, clinical, or regulatory decisions.</span>
+      </footer>
+    </div>
+  );
 }
 
 function RiskBadge({ level }) {
@@ -62,14 +103,85 @@ function RiskBadge({ level }) {
   );
 }
 
+class AIResultBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Unable to render AI result', error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="ai-result-render-error" role="alert">
+          <strong>The analysis completed, but one result field could not be displayed.</strong>
+          <p>Open the Raw view to inspect the provider response, then retry the analysis.</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function normalizeRiskBadge(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'object') return value.level || value.label || value.value || null;
+  return value;
+}
+
 export default function AiFeaturePage({ config }) {
   const [formData, setFormData] = useState({});
   const [result, setResult] = useState(null);
   const [rawResult, setRawResult] = useState(null);
   const [model, setModel] = useState('');
   const [loading, setLoading] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState('');
   const [viewMode, setViewMode] = useState('structured'); // 'structured' | 'raw'
+  const outputRef = useRef(null);
+
+  useEffect(() => {
+    setFormData({});
+    setResult(null);
+    setRawResult(null);
+    setError('');
+    setModel('');
+    setViewMode('structured');
+  }, [config.apiCall]);
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsedSeconds(0);
+      return undefined;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    if ((result !== null || error) && outputRef.current) {
+      outputRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [error, result]);
+
+  const fillExample = (scenarioKey) => {
+    setFormData(buildAiExample(config, scenarioKey));
+    setResult(null);
+    setRawResult(null);
+    setError('');
+    setModel('');
+    setViewMode('structured');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -126,7 +238,9 @@ export default function AiFeaturePage({ config }) {
   const isStructured = result !== null && typeof result === 'object';
 
   // Extract top-level risk/severity for visual emphasis
-  const riskField = result?.overall_risk || result?.severity || result?.risk_level || result?.confidence;
+  const riskField = normalizeRiskBadge(
+    result?.overall_risk || result?.severity || result?.risk_level || result?.confidence
+  );
 
   return (
     <>
@@ -138,7 +252,7 @@ export default function AiFeaturePage({ config }) {
       </div>
 
       <div className="page-body">
-        <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '24px', alignItems: 'start' }}>
+        <div className="ai-feature-grid">
           {/* Input Form */}
           <div className="card">
             <div className="card-header">
@@ -146,6 +260,24 @@ export default function AiFeaturePage({ config }) {
             </div>
             <form onSubmit={handleSubmit}>
               <div className="card-body">
+                <div className="ai-example-panel">
+                  <div>
+                    <strong>Complete example scenarios</strong>
+                    <span>Each option fills every input, including optional fields.</span>
+                  </div>
+                  <div className="ai-example-actions">
+                    {AI_EXAMPLE_SCENARIOS.map((scenario) => (
+                      <button
+                        key={scenario.key}
+                        type="button"
+                        className={`ai-example-button ${scenario.tone}`}
+                        onClick={() => fillExample(scenario.key)}
+                      >
+                        {scenario.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {config.fields.map((field) => (
                   <div className="form-group" key={field.key}>
                     <label className="form-label">{field.label}</label>
@@ -171,6 +303,7 @@ export default function AiFeaturePage({ config }) {
                     ) : (
                       <input
                         type={field.type === 'number' ? 'number' : 'text'}
+                        step={field.type === 'number' ? (field.step || 'any') : undefined}
                         className="form-input"
                         placeholder={field.placeholder}
                         value={formData[field.key] || ''}
@@ -190,13 +323,20 @@ export default function AiFeaturePage({ config }) {
           </div>
 
           {/* Results */}
-          <div>
+          <div ref={outputRef} className="ai-result-panel" aria-live="polite">
             {loading && (
               <div className="card">
                 <div className="card-body">
                   <div className="ai-loading">
                     <div className="spinner"></div>
-                    <span>AI is analyzing your request... This may take a moment.</span>
+                    <span>
+                      {elapsedSeconds < 20
+                        ? 'AI is generating and validating the molecular design…'
+                        : elapsedSeconds < 55
+                          ? 'OpenRouter is still working. Keep this page open…'
+                          : 'The provider is taking longer than usual; the server will retry once automatically…'}
+                      <small>{elapsedSeconds}s elapsed</small>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -241,13 +381,18 @@ export default function AiFeaturePage({ config }) {
                   )}
                 </div>
                 <div className="ai-output-content">
-                  {viewMode === 'raw' && rawResult ? (
-                    <ReactMarkdown>{rawResult}</ReactMarkdown>
-                  ) : isStructured ? (
-                    <JsonViewer data={result} />
-                  ) : (
-                    <ReactMarkdown>{typeof result === 'string' ? result : JSON.stringify(result, null, 2)}</ReactMarkdown>
-                  )}
+                  <AIResultBoundary key={`${config.apiCall}-${viewMode}-${rawResult?.length || 0}`}>
+                    {viewMode === 'structured' && isStructured && (
+                      <AIDesignVisualization config={config} result={result} formData={formData} />
+                    )}
+                    {viewMode === 'raw' && rawResult ? (
+                      <ReactMarkdown>{rawResult}</ReactMarkdown>
+                    ) : isStructured ? (
+                      <ProfessionalAIReport data={result} />
+                    ) : (
+                      <ReactMarkdown>{typeof result === 'string' ? result : JSON.stringify(result, null, 2)}</ReactMarkdown>
+                    )}
+                  </AIResultBoundary>
                 </div>
               </div>
             )}

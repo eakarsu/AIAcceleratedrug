@@ -5,6 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const { default: rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { Pool } = require('pg');
+const { restoreQueue } = require('./services/scientificJobQueue');
 
 // Validate critical env vars at startup
 if (!process.env.OPENROUTER_API_KEY) {
@@ -13,6 +14,7 @@ if (!process.env.OPENROUTER_API_KEY) {
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 3001;
+const HOST = process.env.BACKEND_HOST || '0.0.0.0';
 
 // Security headers
 app.use(helmet({
@@ -56,7 +58,7 @@ const authLimiter = rateLimit({
 // AI rate limiter — 20 AI requests per hour per user
 const aiRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 20,
+  max: Number(process.env.AI_RATE_LIMIT_PER_HOUR || 120),
   keyGenerator: makeKey,
   message: { error: 'Too many AI requests. Maximum 20 AI calls per hour. Please try again later.' },
   standardHeaders: true,
@@ -82,7 +84,7 @@ app.use('/api', generalLimiter);
 app.use('/api', require('../runtimeAcceptance'));
 
 app.use('/api', (req, res, next) => {
-  const supported = ['/auth', '/health', '/evidence-workflows'];
+  const supported = ['/auth', '/health', '/evidence-workflows', '/discovery'];
   if (legacyPrototypeRoutesEnabled || supported.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))) return next();
   return res.status(410).json({ error: 'Legacy prototype route is quarantined', code: 'prototype_route_quarantined' });
 });
@@ -106,6 +108,8 @@ app.use('/api/literature', require('./routes/literature'));
 app.use('/api/ai', aiRateLimiter, require('./routes/ai'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/evidence-workflows', require('./routes/evidenceWorkflow'));
+app.use('/api/discovery/advanced', require('./routes/advancedDiscovery'));
+app.use('/api/discovery', require('./routes/discovery'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -130,8 +134,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend server running on port ${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`Backend server running on ${HOST}:${PORT}`);
+  restoreQueue(pool).catch((error) => console.error('[Scientific queue] Restore failed:', error.message));
 });
 
 module.exports = app;

@@ -25,7 +25,7 @@ router.get('/', authenticateToken, paginate, async (req, res) => {
 
     const [rows, count] = await Promise.all([
       pool.query(`SELECT * FROM protein_structures ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, params),
-      pool.query(`SELECT COUNT(*) FROM protein_structures ${whereClause}`, search ? [`%${search}%`] : []),
+      pool.query(`SELECT COUNT(*) FROM protein_structures ${whereClause.replace(/\$3/g, '$1')}`, search ? [`%${search}%`] : []),
     ]);
 
     res.json({ data: rows.rows, pagination: paginationMeta(count.rows[0].count, page, limit) });

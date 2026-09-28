@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 
 const AI_FEATURES = [
-  '', 'protein-design', 'binding-affinity', 'toxicity-prediction', 'structure-prediction',
+  '', 'protein-design', 'drug-design', 'binding-affinity', 'toxicity-prediction', 'structure-prediction',
   'drug-interaction', 'check-interactions', 'admet-prediction', 'literature-analysis',
   'validate-sequence', 'rank-candidates', 'predict-solubility', 'dock-protein',
   'predict-off-targets', 'recommend-formulation', 'patent-landscape', 'virtual-hts',

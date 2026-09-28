@@ -24,8 +24,6 @@ fi
 demo_credentials_email=""
 demo_credentials_password=""
 demo_credentials_tenant="${DEMO_TENANT:-${BOOTSTRAP_TENANT_SLUG:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}}"
-demo_credentials_tenant="${DEMO_TENANT:-${BOOTSTRAP_TENANT_SLUG:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}}"
-demo_credentials_tenant="${DEMO_TENANT:-${BOOTSTRAP_TENANT_SLUG:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}}"
 if [ -n "${PROVISION_ADMIN_EMAIL:-}" ] && [ -n "${PROVISION_ADMIN_PASSWORD:-}" ]; then
   demo_credentials_email="$PROVISION_ADMIN_EMAIL"
   demo_credentials_password="$PROVISION_ADMIN_PASSWORD"
@@ -78,18 +76,49 @@ unset demo_credentials_email demo_credentials_password demo_credentials_tenant d
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; cd "$root"
 test -f .env || { echo 'Missing .env; copy .env.example and configure it.' >&2; exit 1; }
 set -a; source .env; set +a; : "${BACKEND_PORT:=3001}" "${FRONTEND_PORT:=3000}"
+if [ -f .env.science.local ]; then set -a; source .env.science.local; set +a; fi
+: "${APP_BIND_HOST:=0.0.0.0}"
+app_public_host="${APP_PUBLIC_HOST:-}"
+if [ -z "$app_public_host" ] && command -v ipconfig >/dev/null 2>&1; then
+  app_public_host="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+fi
+if [ -z "$app_public_host" ] && command -v hostname >/dev/null 2>&1; then
+  app_public_host="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+fi
+: "${app_public_host:=127.0.0.1}"
+if [ "${USE_SCIENTIFIC_POSTGRES:-false}" = true ]; then
+  : "${SCIENTIFIC_POSTGRES_PORT:=35432}" "${SCIENTIFIC_POSTGRES_DB:=aiacceleratedrug_science}" \
+    "${SCIENTIFIC_POSTGRES_USER:=drug_app}" "${SCIENTIFIC_POSTGRES_PASSWORD:=local-science-password}"
+  ./scripts/scientific-db.sh up
+  export DATABASE_URL="postgresql://${SCIENTIFIC_POSTGRES_USER}:${SCIENTIFIC_POSTGRES_PASSWORD}@127.0.0.1:${SCIENTIFIC_POSTGRES_PORT}/${SCIENTIFIC_POSTGRES_DB}"
+fi
 export RUNTIME_PROJECT_NAME="AI Accelerated Drug Discovery"
 export RUNTIME_AI_ENDPOINT="/api/ai/drug-discovery-review"
 export RUNTIME_AI_FEATURE="drug-discovery-evidence-review"
 export RUNTIME_AI_SYSTEM_PROMPT="Review drug-discovery evidence, scientific uncertainty, safety boundaries, and practical next validation steps."
 test -d backend/node_modules && test -d frontend/node_modules || { echo 'Dependencies absent; run scripts/bootstrap.sh.' >&2; exit 1; }
-for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do if lsof -ti ":$port" >/dev/null 2>&1; then echo "Port $port is occupied; refusing to terminate another process." >&2; exit 1; fi; done
+stop_assigned_port() {
+  local port="$1" pids
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | sort -u || true)"
+  [ -z "$pids" ] && return 0
+  echo "Stopping previous listener on assigned app port $port: $pids"
+  kill -TERM $pids 2>/dev/null || true
+  for _ in 1 2 3 4 5; do
+    lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || return 0
+    sleep 0.2
+  done
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | sort -u || true)"
+  [ -z "$pids" ] || kill -KILL $pids 2>/dev/null || true
+}
+stop_assigned_port "$BACKEND_PORT"
+stop_assigned_port "$FRONTEND_PORT"
 if [ "${MIGRATE_ON_START:-false}" = true ]; then
   case "${ALLOW_SCHEMA_MIGRATION:-}" in 1|true) ;; *) echo 'ALLOW_SCHEMA_MIGRATION=1 or true is required for startup migration.' >&2; exit 1;; esac
   ./scripts/migrate.sh
   node backend/scripts/create-admin.js
 fi
-(cd backend && CLIENT_URL="http://127.0.0.1:$FRONTEND_PORT" npm start) & backend_pid=$!
-(cd frontend && npm run dev -- --port "$FRONTEND_PORT" --host 127.0.0.1) & frontend_pid=$!
+echo "AI Accelerated Drug Discovery: http://$app_public_host:$FRONTEND_PORT"
+(cd backend && BACKEND_HOST="$APP_BIND_HOST" CLIENT_URL="http://$app_public_host:$FRONTEND_PORT" npm start) & backend_pid=$!
+(cd frontend && npm run dev -- --port "$FRONTEND_PORT" --host "$APP_BIND_HOST") & frontend_pid=$!
 cleanup(){ kill "$backend_pid" "$frontend_pid" 2>/dev/null || true; }; trap cleanup EXIT INT TERM
 wait "$backend_pid" "$frontend_pid"
